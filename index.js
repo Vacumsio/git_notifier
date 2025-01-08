@@ -1,46 +1,56 @@
+const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
-const git = require("simple-git");
-require("dotenv").config();
+const express = require("express");
+const app = express();
 
-const bot = new TelegramBot(process.env.API_KEY_BOT, { polling: true });
-const repoUrl = "https://github.com/Vacumsio/playwright_ts"; // URL вашего репозитория
-const repo = git();
+const bot = new TelegramBot("7603762219:AAEmlitz1TS9RDPFm2yT3j0bzJiz3oISbls", {
+  polling: true,
+});
+const chatId = "-4621825250";
+const repoOwner = "vacumsio";
+const repoName = "playwright_ts";
+let lastCommitHash = null;
 
-// Инициализируйте репозиторий
-repo.addRemote("origin", repoUrl);
-
-// Функция для получения последних коммитов
 async function getLatestCommits() {
-  try {
-    const commits = await repo.log();
-    return commits.all;
-  } catch (error) {
-    console.error("Ошибка при получении коммитов:", error);
-    return [];
-  }
-}
+  const url = `https://api.github.com/repos/${repoOwner}/${repoName}/commits`;
+  const response = await axios.get(url);
+  const commits = response.data;
+  console.log(lastCommitHash); //null
 
-// Отправка уведомлений о новых коммитах
-async function sendCommitNotifications(commits) {
-  const chatId = "-4621825250"; // ID чата, куда будут отправляться уведомления
-  for (const commit of commits) {
-    const message = `Новый коммит: ${commit.hash} - ${commit.message}`;
-    bot.sendMessage(chatId, message);
-  }
+  const newCommits = commits.filter((commit) => commit.sha !== lastCommitHash);
+  console.log(newCommits);
+
+  console.log(lastCommitHash); //null
+  return newCommits;
 }
 
 // Периодическая проверка новых коммитов
 setInterval(async () => {
-  const commits = await getLatestCommits();
-  sendCommitNotifications(commits);
-}, 1000); // Проверка каждую минуту
-
-// Обработчик команды для ручной проверки коммитов
-bot.onText(/\/commits/, async (msg) => {
-  const chatId = msg.chat.id;
-  const commits = await getLatestCommits();
-  for (const commit of commits) {
-    const message = `Коммит: ${commit.hash} - ${commit.message}`;
-    bot.sendMessage(chatId, message);
+  const newCommits = await getLatestCommits();
+  if (newCommits.length > 0 && lastCommitHash !== newCommits) {
+    lastCommitHash = newCommits; // Обновите lastCommitHash на самый новый коммит
+    console.log(lastCommitHash);
+    newCommits.forEach((commit) => {
+      const message = `Новый коммит: ${commit.sha} - ${commit.commit.message}`;
+      console.log(message);
+      // bot.sendMessage(chatId, message);
+    });
   }
+}, 5000); // Проверка каждую минуту
+
+// Настройка WebHook для прямых уведомлений от GitHub
+app.post("/webhook", (req, res) => {
+  const payload = req.body;
+  if (payload.ref === "refs/heads/main") {
+    // или другая ветка, которую вы отслеживаете
+    const commit = payload.commits;
+    const message = `Новый коммит: ${commit.id} - ${commit.message}`;
+    bot.sendMessage(chatId, message);
+    lastCommitHash = commit.id;
+  }
+  res.status(200).send("OK");
+});
+
+app.listen(3000, () => {
+  console.log("Server is running on port 3000");
 });
