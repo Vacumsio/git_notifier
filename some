@@ -1,2 +1,0 @@
-// const newCommits = commits.sha !== lastCommitHash ? commits.sha : lastCommitHash;
-const commits = response.data.shift();
